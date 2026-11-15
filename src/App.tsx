@@ -1,13 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Headphones, Loader2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { CheckCircle2, Headphones, Loader2, ShieldAlert, X } from 'lucide-react';
+import { AdminCustomersView } from './components/AdminCustomersView';
 import { AdminDashboardView } from './components/AdminDashboardView';
+import { AdminSettingsView } from './components/AdminSettingsView';
 import { AuthLandingPage } from './components/AuthLandingPage';
 import { CustomerChatView } from './components/CustomerChatView';
+import { CustomerProfileView } from './components/CustomerProfileView';
 import { CustomerTicketsView } from './components/CustomerTicketsView';
-import { DemoDataGuideView } from './components/DemoDataGuideView';
 import { FaqActionResult, KnowledgeBaseView } from './components/KnowledgeBaseView';
+import { Sidebar } from './components/Sidebar';
 import { TicketModal, TicketSubmitResult } from './components/TicketModal';
-import { TopNav } from './components/TopNav';
+import { TopHeader } from './components/TopHeader';
 import {
   DEMO_ORDERS,
   DEMO_PRODUCTS,
@@ -44,6 +47,13 @@ import {
   TicketPriority,
   UserRole,
 } from './types';
+import {
+  canAccessView,
+  getDefaultViewForRole,
+  getDeniedReason,
+  parseRequestedViewFromLocation,
+  syncLocationHash,
+} from './utils/rbac';
 
 function normalizeCategory(val?: string): TicketCategory {
   const valid = Object.values(TicketCategory);
@@ -131,8 +141,11 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [accessDeniedReason, setAccessDeniedReason] = useState<string | null>(null);
 
   const [activeView, setActiveView] = useState<ActiveView>('chat');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
   const [tickets, setTickets] = useState<SupportTicket[]>(() =>
     loadTicketsFromStorage(INITIAL_TICKETS)
   );
@@ -154,7 +167,29 @@ export default function App() {
     targetView?: ActiveView;
   } | null>(null);
 
-  // Check active server-side demo session on initial mount
+  const verifyAdminOnServer = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/verify', {
+        credentials: 'include',
+        headers: buildAuthHeaders(),
+      });
+      if (res.status === 401) {
+        clearStoredSessionToken();
+        setCurrentUser(null);
+        setSessionNotice('Your session expired. Please sign in again.');
+        return false;
+      }
+      if (res.status === 403) {
+        setAccessDeniedReason('Access denied. Administrator permissions are required.');
+        return false;
+      }
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Check active server-side authenticated session on initial mount
   useEffect(() => {
     let active = true;
     fetch('/api/auth/me', {
@@ -167,7 +202,26 @@ export default function App() {
         if (res.ok && data?.user) {
           const user = data.user as AuthUser;
           setCurrentUser(user);
-          setActiveView(user.role === UserRole.ADMIN ? 'admin' : 'chat');
+          const requestedView = parseRequestedViewFromLocation();
+          if (requestedView) {
+            if (canAccessView(user, requestedView)) {
+              setAccessDeniedReason(null);
+              setActiveView(requestedView);
+              syncLocationHash(requestedView);
+              if (user.role === UserRole.ADMIN) {
+                void verifyAdminOnServer();
+              }
+            } else {
+              const fallback = getDefaultViewForRole(user.role);
+              setActiveView(fallback);
+              setAccessDeniedReason(getDeniedReason(user, requestedView));
+            }
+          } else {
+            const defaultView = getDefaultViewForRole(user.role);
+            setAccessDeniedReason(null);
+            setActiveView(defaultView);
+            syncLocationHash(defaultView);
+          }
         } else if (res.status === 401) {
           clearStoredSessionToken();
         }
@@ -181,7 +235,29 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [verifyAdminOnServer]);
+
+  // Enforce role-based access if the user manually changes URL hash or path
+  useEffect(() => {
+    const handleLocationCheck = () => {
+      if (!currentUser) return;
+      const requestedView = parseRequestedViewFromLocation();
+      if (!requestedView) return;
+      if (!canAccessView(currentUser, requestedView)) {
+        setAccessDeniedReason(getDeniedReason(currentUser, requestedView));
+        return;
+      }
+      setAccessDeniedReason(null);
+      setActiveView(requestedView);
+    };
+
+    window.addEventListener('hashchange', handleLocationCheck);
+    window.addEventListener('popstate', handleLocationCheck);
+    return () => {
+      window.removeEventListener('hashchange', handleLocationCheck);
+      window.removeEventListener('popstate', handleLocationCheck);
+    };
+  }, [currentUser]);
 
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
@@ -221,9 +297,7 @@ export default function App() {
       (t) =>
         t.userId === currentUser.id ||
         (t.customerEmail &&
-          t.customerEmail.toLowerCase() === currentUser.email.toLowerCase()) ||
-        (currentUser.isDemo &&
-          t.customerName.toLowerCase() === currentUser.fullName.toLowerCase())
+          t.customerEmail.toLowerCase() === currentUser.email.toLowerCase())
     );
   }, [tickets, currentUser]);
 
@@ -235,10 +309,15 @@ export default function App() {
     setFaqs(loadFaqsFromStorage(INITIAL_FAQS));
     setCurrentUser(user);
     setSessionNotice(null);
+    setAccessDeniedReason(null);
     setChatError(null);
-    setActiveView(user.role === UserRole.ADMIN ? 'admin' : 'chat');
+    setGlobalSearch('');
+    setMobileSidebarOpen(false);
+    const defaultView = getDefaultViewForRole(user.role);
+    setActiveView(defaultView);
+    syncLocationHash(defaultView);
     showToast(
-      `Entered ${user.role === UserRole.ADMIN ? 'Admin Demo' : 'Customer Demo'} as ${user.fullName}.`
+      `Signed in as ${user.fullName} (${user.role === UserRole.ADMIN ? 'Administrator' : 'Customer'}).`
     );
   };
 
@@ -255,54 +334,42 @@ export default function App() {
     clearStoredSessionToken();
     setCurrentUser(null);
     setSessionNotice(null);
+    setAccessDeniedReason(null);
     setChatError(null);
+    setGlobalSearch('');
+    setMobileSidebarOpen(false);
     setIsTicketModalOpen(false);
-  };
-
-  const syncDemoRole = (portal: 'customer' | 'admin', demoName?: string) => {
-    fetch('/api/auth/demo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ portal, demoName }),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data?.user) {
-          if (data.sessionToken) {
-            saveStoredSessionToken(data.sessionToken);
-          }
-          setCurrentUser(data.user as AuthUser);
-        }
-      })
-      .catch(() => {
-        // Local demo state remains active
-      });
+    if (window.location.hash) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
   };
 
   const handleNavigate = (view: ActiveView) => {
     if (!currentUser) return;
-    if (
-      currentUser.role !== UserRole.ADMIN &&
-      (view === 'admin' || view === 'knowledge')
-    ) {
-      setCurrentUser({
-        id: 'usr-demo-admin',
-        fullName: 'TechCare Admin (Demo)',
-        email: 'admin.demo@techcare.example',
-        role: UserRole.ADMIN,
-        isDemo: true,
-      });
-      syncDemoRole('admin');
-      showToast('Switched to Admin Demo mode.');
+    if (!canAccessView(currentUser, view)) {
+      const reason = getDeniedReason(currentUser, view);
+      setAccessDeniedReason(reason);
+      showToast(reason);
+      return;
     }
-    if (view === 'admin' || view === 'tickets') {
+
+    setAccessDeniedReason(null);
+    setGlobalSearch('');
+    setMobileSidebarOpen(false);
+    if (view === 'admin' || view === 'tickets' || view === 'customers' || view === 'profile') {
       setTickets(loadTicketsFromStorage(INITIAL_TICKETS));
     }
     if (view === 'knowledge' || view === 'chat') {
       setFaqs(loadFaqsFromStorage(INITIAL_FAQS));
     }
+    if (
+      currentUser.role === UserRole.ADMIN &&
+      (view === 'admin' || view === 'knowledge' || view === 'customers' || view === 'settings')
+    ) {
+      void verifyAdminOnServer();
+    }
     setActiveView(view);
+    syncLocationHash(view);
   };
 
   const requestAiReply = async (historyForApi: ChatMessage[]) => {
@@ -555,6 +622,7 @@ export default function App() {
   };
 
   const handleResetDemoData = () => {
+    if (currentUser?.role !== UserRole.ADMIN) return;
     const restored = resetAllDemoData();
     setTickets(restored.tickets);
     setFaqs(restored.faqs);
@@ -565,13 +633,13 @@ export default function App() {
   // Loading state while verifying session cookie
   if (isCheckingAuth) {
     return (
-      <div className="min-h-screen bg-[#E9F0F7] flex items-center justify-center p-4">
-        <div className="neu-surface rounded-3xl p-8 flex flex-col items-center gap-3 text-center">
-          <span className="neu-btn-primary w-12 h-12 rounded-2xl flex items-center justify-center">
+      <div className="min-h-screen bg-[#F4F6FC] flex items-center justify-center p-4">
+        <div className="saas-card rounded-3xl p-8 flex flex-col items-center gap-3.5 text-center max-w-xs w-full">
+          <span className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#5486EA] to-[#8B72E8] text-white flex items-center justify-center shadow-[0_10px_24px_rgba(84,134,234,0.28)]">
             <Headphones className="w-6 h-6" aria-hidden="true" />
           </span>
-          <div className="flex items-center gap-2 text-sm font-semibold text-[#29384A]">
-            <Loader2 className="w-4 h-4 animate-spin text-[#548BCB]" aria-hidden="true" />
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#20283B]">
+            <Loader2 className="w-4 h-4 animate-spin text-[#5486EA]" aria-hidden="true" />
             <span>Loading TechCare DeskPilot...</span>
           </div>
         </div>
@@ -579,7 +647,7 @@ export default function App() {
     );
   }
 
-  // Demo Access gate: show Demo Access Page first
+  // Authentication landing gate
   if (!currentUser) {
     return (
       <AuthLandingPage
@@ -592,72 +660,145 @@ export default function App() {
   const isAdmin = currentUser.role === UserRole.ADMIN;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#E9F0F7] text-[#29384A]">
-      <TopNav
+    <div className="min-h-screen flex bg-[#F4F6FC] text-[#20283B]">
+      <Sidebar
         currentUser={currentUser}
         activeView={activeView}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
         onNavigate={handleNavigate}
-        onOpenNewTicket={() => handleOpenNewTicketModal(null, null)}
         onLogout={handleLogout}
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {activeView === 'chat' && (
-          <CustomerChatView
-            messages={messages}
-            customerName={currentUser.role === UserRole.CUSTOMER ? currentUser.fullName : undefined}
-            isLoading={isChatLoading}
-            errorMsg={chatError}
-            onSendMessage={handleSendMessage}
-            onRetryLast={handleRetryLast}
-            onClearChat={handleClearChat}
-            onCreateTicketFromMessage={(msgId, draft) =>
-              handleOpenNewTicketModal(msgId, draft ?? null)
-            }
-            onNavigate={handleNavigate}
-          />
-        )}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <TopHeader
+          currentUser={currentUser}
+          activeView={activeView}
+          tickets={isAdmin ? tickets : customerScopedTickets}
+          globalSearch={globalSearch}
+          onGlobalSearchChange={setGlobalSearch}
+          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+          onOpenNewTicket={() => handleOpenNewTicketModal(null, null)}
+          onNavigate={handleNavigate}
+          onLogout={handleLogout}
+        />
 
-        {activeView === 'tickets' && (
-          <CustomerTicketsView
-            tickets={customerScopedTickets}
-            isAdmin={isAdmin}
-            onOpenNewTicket={() => handleOpenNewTicketModal(null, null)}
-          />
-        )}
+        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6">
+          <div className="max-w-7xl mx-auto w-full">
+            {accessDeniedReason || !canAccessView(currentUser, activeView) ? (
+              <div
+                className="saas-card rounded-3xl p-8 sm:p-10 max-w-lg mx-auto text-center space-y-4 my-8"
+                role="alert"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-[#FFF0F1] border border-[#FCD9DC] text-[#C83E49] flex items-center justify-center mx-auto">
+                  <ShieldAlert className="w-6 h-6" aria-hidden="true" />
+                </div>
+                <h1 className="text-xl font-bold text-[#20283B]">Access Denied</h1>
+                <p className="text-sm text-[#78849B] leading-relaxed">
+                  {accessDeniedReason || getDeniedReason(currentUser, activeView)}
+                </p>
+                <div className="pt-2 flex items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleNavigate(getDefaultViewForRole(currentUser.role))}
+                    className="saas-btn-primary px-5 py-2.5 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5486EA]"
+                  >
+                    {isAdmin ? 'Return to Admin Overview' : 'Return to Customer Chat'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {activeView === 'chat' && !isAdmin && (
+                  <CustomerChatView
+                    messages={messages}
+                    customerName={currentUser.fullName}
+                    isLoading={isChatLoading}
+                    errorMsg={chatError}
+                    onSendMessage={handleSendMessage}
+                    onRetryLast={handleRetryLast}
+                    onClearChat={handleClearChat}
+                    onCreateTicketFromMessage={(msgId, draft) =>
+                      handleOpenNewTicketModal(msgId, draft ?? null)
+                    }
+                    onNavigate={handleNavigate}
+                  />
+                )}
 
-        {activeView === 'admin' && (
-          <AdminDashboardView
-            tickets={tickets}
-            onUpdateTicket={handleUpdateTicket}
-            onDeleteTicket={handleDeleteTicket}
-            onOpenKnowledgeBase={() => handleNavigate('knowledge')}
-          />
-        )}
+                {activeView === 'tickets' && (
+                  <CustomerTicketsView
+                    tickets={customerScopedTickets}
+                    isAdmin={isAdmin}
+                    searchQueryExternal={globalSearch}
+                    onOpenNewTicket={() => handleOpenNewTicketModal(null, null)}
+                    onUpdateTicket={isAdmin ? handleUpdateTicket : undefined}
+                    onDeleteTicket={isAdmin ? handleDeleteTicket : undefined}
+                  />
+                )}
 
-        {activeView === 'knowledge' && (
-          <KnowledgeBaseView
-            faqs={faqs}
-            onAddFaq={handleAddFaq}
-            onUpdateFaq={handleUpdateFaq}
-            onDeleteFaq={handleDeleteFaq}
-          />
-        )}
+                {activeView === 'profile' && !isAdmin && (
+                  <CustomerProfileView
+                    currentUser={currentUser}
+                    tickets={customerScopedTickets}
+                    onNavigate={handleNavigate}
+                    onOpenNewTicket={() => handleOpenNewTicketModal(null, null)}
+                    onLogout={handleLogout}
+                  />
+                )}
 
-        {activeView === 'demo' && (
-          <DemoDataGuideView
-            onResetDemoData={handleResetDemoData}
-            onNavigate={handleNavigate}
-          />
-        )}
-      </main>
+                {activeView === 'admin' && isAdmin && (
+                  <AdminDashboardView
+                    tickets={tickets}
+                    searchQueryExternal={globalSearch}
+                    onUpdateTicket={handleUpdateTicket}
+                    onDeleteTicket={handleDeleteTicket}
+                    onOpenKnowledgeBase={() => handleNavigate('knowledge')}
+                    onOpenTicketManagement={() => handleNavigate('tickets')}
+                  />
+                )}
 
-      <footer className="bg-[#EEF3F9] shadow-[0_-6px_18px_rgba(163,181,204,0.22)]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#5B6C82]">
-          <span className="font-semibold text-[#29384A]">TechCare DeskPilot · AI Customer Support MVP</span>
-          <span>All customers, orders & policies shown are fictional demo data stored locally.</span>
-        </div>
-      </footer>
+                {activeView === 'knowledge' && isAdmin && (
+                  <KnowledgeBaseView
+                    faqs={faqs}
+                    searchQueryExternal={globalSearch}
+                    onAddFaq={handleAddFaq}
+                    onUpdateFaq={handleUpdateFaq}
+                    onDeleteFaq={handleDeleteFaq}
+                  />
+                )}
+
+                {activeView === 'customers' && isAdmin && (
+                  <AdminCustomersView
+                    tickets={tickets}
+                    searchQueryExternal={globalSearch}
+                    authHeadersBuilder={buildAuthHeaders}
+                    onViewTickets={() => handleNavigate('tickets')}
+                  />
+                )}
+
+                {activeView === 'settings' && isAdmin && (
+                  <AdminSettingsView
+                    currentUser={currentUser}
+                    onResetDemoData={handleResetDemoData}
+                    onNavigate={handleNavigate}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        </main>
+
+        <footer className="border-t border-[#E3EAF5] bg-white/60 backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-[#78849B]">
+            <span className="font-semibold text-[#20283B]">
+              TechCare DeskPilot · AI Customer Support Suite
+            </span>
+            <span>
+              All customers, orders & policies shown are fictional demonstration data stored locally.
+            </span>
+          </div>
+        </footer>
+      </div>
 
       <TicketModal
         isOpen={isTicketModalOpen}
@@ -669,19 +810,21 @@ export default function App() {
           setTicketDraft(null);
           setSourceMessageId(null);
         }}
-        onViewTickets={() => handleNavigate(isAdmin ? 'admin' : 'tickets')}
+        onViewTickets={() => handleNavigate('tickets')}
         onSubmit={handleCreateTicket}
       />
 
-      {/* Neumorphic Notification Toast */}
+      {/* SaaS Notification Toast */}
       {toast && (
         <div
           role="status"
           aria-live="polite"
-          className="neu-surface fixed bottom-5 right-5 z-50 text-[#29384A] px-4 py-3.5 rounded-2xl flex items-center gap-3 text-sm max-w-md"
+          className="saas-card fixed bottom-5 right-5 z-50 text-[#20283B] px-4 py-3.5 rounded-2xl flex items-center gap-3 text-sm max-w-md shadow-[0_18px_40px_rgba(32,40,59,0.14)]"
         >
-          <CheckCircle2 className="w-4 h-4 text-[#548BCB] shrink-0" aria-hidden="true" />
-          <span className="flex-1 font-medium">{toast.message}</span>
+          <span className="w-7 h-7 rounded-xl bg-[#EAF9F3] text-[#22B983] flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+          </span>
+          <span className="flex-1 font-medium text-[#20283B]">{toast.message}</span>
           {toast.actionLabel && toast.targetView && (
             <button
               type="button"
@@ -689,7 +832,7 @@ export default function App() {
                 handleNavigate(toast.targetView!);
                 setToast(null);
               }}
-              className="text-xs font-bold text-[#548BCB] hover:underline whitespace-nowrap shrink-0"
+              className="text-xs font-bold text-[#5486EA] hover:underline whitespace-nowrap shrink-0"
             >
               {toast.actionLabel}
             </button>
@@ -697,7 +840,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setToast(null)}
-            className="neu-btn w-7 h-7 rounded-lg flex items-center justify-center text-[#5B6C82] hover:text-[#29384A]"
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#78849B] hover:text-[#20283B] hover:bg-[#EDF1FA] transition-colors"
             aria-label="Dismiss notification"
           >
             <X className="w-3.5 h-3.5" />

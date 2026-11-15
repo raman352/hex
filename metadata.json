@@ -2,5 +2,7 @@
   "name": "TechCare DeskPilot",
   "description": "AI-powered customer support desk, ticket management, and knowledge base platform for TechCare Electronics.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

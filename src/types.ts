@@ -114,4 +114,12 @@ export interface ChatMessage {
   isError?: boolean;
 }
 
-export type ActiveView = 'chat' | 'tickets' | 'admin' | 'knowledge' | 'demo';
+export type ActiveView =
+  | 'chat'
+  | 'tickets'
+  | 'profile'
+  | 'admin'
+  | 'knowledge'
+  | 'customers'
+  | 'settings';
+

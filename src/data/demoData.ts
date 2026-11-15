@@ -278,10 +278,11 @@ export const INITIAL_WELCOME_MESSAGE: ChatMessage = {
 };
 
 export const SUGGESTED_QUESTIONS: string[] = [
-  'What is TechCare’s return and refund policy?',
-  'Mera order TC-1042 kab tak deliver hoga?',
-  'What warranty does AeroSound Pro ANC have?',
-  'My PulseWatch S3 screen is flickering — how do I get it fixed?',
+  'I would like to track my order.',
+  'I have a question about TechCare warranty coverage and claims.',
+  'What is TechCare’s refund policy, and how can I track a refund?',
+  'What is TechCare’s return policy, and how do I initiate a return?',
+  'I need product support.',
 ];
 
 const STORAGE_KEYS = {

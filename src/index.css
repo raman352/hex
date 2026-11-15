@@ -1,0 +1,220 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --bg-canvas: #E9F0F7;
+  --bg-surface: #EEF3F9;
+  --bg-surface-bright: #F6F9FD;
+  --bg-recessed: #E1E9F3;
+  --primary-blue: #548BCB;
+  --primary-blue-hover: #467BB8;
+  --text-dark: #29384A;
+  --text-secondary: #5B6C82;
+  --text-muted: #708096;
+  --shadow-dark: rgba(163, 181, 204, 0.46);
+  --shadow-light: rgba(255, 255, 255, 0.9);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    color: var(--text-dark);
+    background-color: var(--bg-canvas);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-dark);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--text-dark);
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Neumorphic Soft UI Surface Tokens */
+.neu-surface {
+  background-color: #EEF3F9;
+  box-shadow:
+    8px 8px 18px rgba(163, 181, 204, 0.42),
+    -8px -8px 18px rgba(255, 255, 255, 0.88);
+}
+
+.neu-surface-sm {
+  background-color: #EEF3F9;
+  box-shadow:
+    5px 5px 12px rgba(163, 181, 204, 0.38),
+    -5px -5px 12px rgba(255, 255, 255, 0.86);
+}
+
+.neu-surface-bright {
+  background: linear-gradient(145deg, #F6FAFF, #EAF1F8);
+  box-shadow:
+    6px 6px 14px rgba(163, 181, 204, 0.36),
+    -6px -6px 14px rgba(255, 255, 255, 0.92);
+}
+
+.neu-header {
+  background-color: #EEF3F9;
+  box-shadow: 0 6px 18px rgba(163, 181, 204, 0.3);
+}
+
+.neu-inset {
+  background-color: #E3ECF5;
+  box-shadow:
+    inset 4px 4px 9px rgba(163, 181, 204, 0.46),
+    inset -4px -4px 9px rgba(255, 255, 255, 0.88);
+}
+
+.neu-inset-sm {
+  background-color: #E4EDF6;
+  box-shadow:
+    inset 3px 3px 6px rgba(163, 181, 204, 0.42),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.85);
+}
+
+.neu-btn,
+.neu-btn-primary,
+.neu-btn-danger {
+  cursor: pointer;
+}
+
+.neu-btn:disabled,
+.neu-btn-primary:disabled,
+.neu-btn-danger:disabled {
+  cursor: not-allowed;
+}
+
+.neu-btn {
+  background-color: #EEF3F9;
+  color: #29384A;
+  box-shadow:
+    4px 4px 10px rgba(163, 181, 204, 0.42),
+    -4px -4px 10px rgba(255, 255, 255, 0.9);
+  transition: box-shadow 160ms ease, background-color 160ms ease, transform 140ms ease, color 160ms ease;
+}
+
+.neu-btn:hover:not(:disabled) {
+  background-color: #F4F8FC;
+  box-shadow:
+    5px 5px 12px rgba(163, 181, 204, 0.48),
+    -5px -5px 12px rgba(255, 255, 255, 0.95);
+}
+
+.neu-btn:active:not(:disabled) {
+  background-color: #E7EFF8;
+  box-shadow:
+    inset 3px 3px 7px rgba(163, 181, 204, 0.48),
+    inset -3px -3px 7px rgba(255, 255, 255, 0.85);
+  transform: translateY(0.5px);
+}
+
+.neu-btn-primary {
+  background: linear-gradient(145deg, #5F96D6, #4A80BF);
+  color: #FFFFFF;
+  box-shadow:
+    5px 5px 12px rgba(84, 139, 203, 0.38),
+    -4px -4px 10px rgba(255, 255, 255, 0.82);
+  transition: box-shadow 160ms ease, filter 160ms ease, transform 140ms ease;
+}
+
+.neu-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.04);
+  box-shadow:
+    6px 6px 14px rgba(84, 139, 203, 0.45),
+    -4px -4px 10px rgba(255, 255, 255, 0.88);
+}
+
+.neu-btn-primary:active:not(:disabled) {
+  box-shadow:
+    inset 3px 3px 7px rgba(36, 73, 117, 0.48),
+    inset -2px -2px 6px rgba(138, 186, 240, 0.35);
+  transform: translateY(0.5px);
+}
+
+.neu-btn-danger {
+  background: linear-gradient(145deg, #D96565, #C24E4E);
+  color: #FFFFFF;
+  box-shadow:
+    4px 4px 10px rgba(194, 78, 78, 0.3),
+    -3px -3px 8px rgba(255, 255, 255, 0.78);
+  transition: box-shadow 160ms ease, filter 160ms ease, transform 140ms ease;
+}
+
+.neu-btn-danger:hover:not(:disabled) {
+  filter: brightness(1.05);
+  box-shadow:
+    5px 5px 12px rgba(194, 78, 78, 0.38),
+    -3px -3px 8px rgba(255, 255, 255, 0.86);
+}
+
+.neu-btn-danger:active:not(:disabled) {
+  box-shadow:
+    inset 3px 3px 7px rgba(125, 38, 38, 0.45),
+    inset -2px -2px 6px rgba(240, 140, 140, 0.3);
+  transform: translateY(0.5px);
+}
+
+/* Soft semantic status wells */
+.neu-status-open {
+  background-color: #E0ECF9;
+  color: #2B5E99;
+  box-shadow:
+    inset 2px 2px 4px rgba(132, 165, 204, 0.35),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.8);
+}
+
+.neu-status-progress {
+  background-color: #F7ECDC;
+  color: #8F5312;
+  box-shadow:
+    inset 2px 2px 4px rgba(191, 157, 107, 0.3),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.8);
+}
+
+.neu-status-resolved {
+  background-color: #DEF1E8;
+  color: #1B6D4B;
+  box-shadow:
+    inset 2px 2px 4px rgba(114, 173, 145, 0.32),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.8);
+}
+
+.neu-status-error {
+  background-color: #F7E1E1;
+  color: #9E3333;
+  box-shadow:
+    inset 2px 2px 4px rgba(186, 121, 121, 0.32),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.8);
+}
+
+/* Subtle custom scrollbar */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C2D0E0;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9DB0C7;
+}
